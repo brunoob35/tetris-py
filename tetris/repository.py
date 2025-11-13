@@ -86,15 +86,27 @@ def authenticate_user(username: str, plain_password: str):
 
 # ---------- Partidas / games ----------
 
-def start_game(user_id: int, rng_seed: int | None) -> int | None:
+def start_game(user_id: int, rng_seed: int) -> int | None:
+    """
+    Cria um registro de jogo em andamento, salvando também a rng_seed
+    que será usada depois no replay para recriar a mesma sequência de peças.
+    """
     sql = text("""
         INSERT INTO games (user_id, started_at, rng_seed, status)
         VALUES (:uid, :st, :seed, 'in_progress')
     """)
     now = dt.datetime.utcnow()
+
     try:
         with get_conn() as conn:
-            res = conn.execute(sql, {"uid": user_id, "st": now, "seed": rng_seed})
+            res = conn.execute(
+                sql,
+                {
+                    "uid": user_id,
+                    "st": now,
+                    "seed": rng_seed,
+                },
+            )
             conn.commit()
             return res.lastrowid
     except Exception as e:
@@ -280,3 +292,27 @@ def get_user_recent_games(user_id: int, limit: int = 10):
     except Exception as e:
         print("[DB] get_user_recent_games falhou:", e)
         return []
+
+
+def get_game_rng_seed(game_id: int) -> int | None:
+    """
+    Busca a rng_seed salva para um game específico.
+    Retorna None se não encontrar ou se der erro.
+    """
+    sql = text("SELECT rng_seed FROM games WHERE id = :gid")
+
+    try:
+        with get_conn() as conn:
+            row = conn.execute(sql, {"gid": game_id}).first()
+            if not row:
+                return None
+
+            # se a Row vier como mapping:
+            if isinstance(row, dict) or hasattr(row, "keys"):
+                return row["rng_seed"]
+
+            # fallback: acesso posicional
+            return row[0]
+    except Exception as e:
+        print("[DB] get_game_rng_seed falhou:", e)
+        return None

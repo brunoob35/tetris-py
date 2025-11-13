@@ -716,13 +716,15 @@ class ReplaySelectView(arcade.View):
     def on_hide_view(self):
         self.ui.disable()
 
-
 # ============================================================
 #                             REPLAY
 # ============================================================
-
-
 class ReplayView(arcade.View):
+    """
+    Tela de replay de uma partida.
+    Recria o TetrisGame com a mesma rng_seed salva no banco e reaplica os inputs gravados.
+    """
+
     def __init__(self, user_id: int, game_id: int):
         super().__init__()
         self.user_id = user_id
@@ -730,13 +732,17 @@ class ReplayView(arcade.View):
 
         arcade.set_background_color(RETRO_BG)
 
-        self.game = TetrisGame()
+        # pega a seed do jogo no banco e recria o game com a mesma sequência de peças
+        rng_seed = repository.get_game_rng_seed(game_id)
+        self.game = TetrisGame(rng_seed=rng_seed)
+
+        # eventos de replay: lista de dicts {"t": float, "key": int}
         self.events = repository.load_replay(game_id) or []
         self.event_index = 0
         self._start_time = time.time()
 
         self.info_text = arcade.Text(
-            f"Replay jogo #{game_id}  |  ESC: voltar",
+            f"Replay jogo #{game_id}  |  ESC/M: voltar",
             WINDOW_WIDTH / 2,
             WINDOW_HEIGHT - 40,
             RETRO_ACCENT,
@@ -746,16 +752,38 @@ class ReplayView(arcade.View):
             font_name=RETRO_FONT,
         )
 
+        # HUD lateral
         left = BOARD_WIDTH * CELL_SIZE + 10
         top = WINDOW_HEIGHT - 70
         self.txt_score = arcade.Text(
-            "", left, top, RETRO_TEXT, 12, anchor_x="left", anchor_y="top", font_name=RETRO_FONT
+            "",
+            left,
+            top,
+            RETRO_TEXT,
+            12,
+            anchor_x="left",
+            anchor_y="top",
+            font_name=RETRO_FONT,
         )
         self.txt_level = arcade.Text(
-            "", left, top - 20, RETRO_TEXT, 12, anchor_x="left", anchor_y="top", font_name=RETRO_FONT
+            "",
+            left,
+            top - 20,
+            RETRO_TEXT,
+            12,
+            anchor_x="left",
+            anchor_y="top",
+            font_name=RETRO_FONT,
         )
         self.txt_lines = arcade.Text(
-            "", left, top - 40, RETRO_TEXT, 12, anchor_x="left", anchor_y="top", font_name=RETRO_FONT
+            "",
+            left,
+            top - 40,
+            RETRO_TEXT,
+            12,
+            anchor_x="left",
+            anchor_y="top",
+            font_name=RETRO_FONT,
         )
 
     def on_show_view(self):
@@ -763,6 +791,7 @@ class ReplayView(arcade.View):
 
     def on_draw(self):
         self.clear()
+        # fundo + moldura geral
         arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, RETRO_BG)
         arcade.draw_lbwh_rectangle_filled(
             12, 12, WINDOW_WIDTH - 24, WINDOW_HEIGHT - 24, RETRO_PANEL_DARK
@@ -778,6 +807,7 @@ class ReplayView(arcade.View):
     def _draw_playfield(self):
         pf_w = BOARD_WIDTH * CELL_SIZE
         pf_h = BOARD_HEIGHT * CELL_SIZE
+
         arcade.draw_lbwh_rectangle_filled(-6, -6, pf_w + 12, pf_h + 12, RETRO_PANEL)
         arcade.draw_lbwh_rectangle_outline(
             -6, -6, pf_w + 12, pf_h + 12, (60, 90, 80, 255), 3
@@ -794,6 +824,7 @@ class ReplayView(arcade.View):
                 c * CELL_SIZE, 0, c * CELL_SIZE, pf_h, (30, 60, 50, 255)
             )
 
+        # células fixas do tabuleiro
         for r in range(self.game.board.height):
             for c in range(self.game.board.width):
                 val = self.game.board.get_cell(r, c)
@@ -802,6 +833,7 @@ class ReplayView(arcade.View):
                     cy = (BOARD_HEIGHT - 1 - r) * CELL_SIZE + CELL_SIZE / 2
                     draw_block_8bit(cx - CELL_SIZE / 2, cy - CELL_SIZE / 2, CELL_SIZE, val)
 
+        # peça atual
         s = self.game.current.shape
         color = self.game.current.color
         for r in range(len(s)):
@@ -829,13 +861,19 @@ class ReplayView(arcade.View):
         self.txt_lines.draw()
 
     def on_update(self, delta_time: float):
+        # timeline do replay baseada no tempo desde o início
         elapsed = time.time() - self._start_time
 
-        while self.event_index < len(self.events) and self.events[self.event_index]["t"] <= elapsed:
+        # aplica todos os eventos cujo tempo já passou
+        while (
+            self.event_index < len(self.events)
+            and self.events[self.event_index]["t"] <= elapsed
+        ):
             ev = self.events[self.event_index]
             self._apply_event(ev)
             self.event_index += 1
 
+        # avança gravidade normalmente
         self.game.tick(delta_time)
 
     def _apply_event(self, ev: dict):

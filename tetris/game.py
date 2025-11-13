@@ -1,16 +1,21 @@
 from __future__ import annotations
+
+import random
 from .board import Board
 from .tetromino import Tetromino
 from .factory import random_piece
 from .constants import BOARD_WIDTH, BOARD_HEIGHT, BASE_FALL_INTERVAL, MAX_LEVEL_SPEED_MULTIPLIER
 
 class TetrisGame:
+    def __init__(self, rng_seed: int | None = None):
+        # RNG determinístico da partida
+        self._rng = random.Random(rng_seed) if rng_seed is not None else random.Random()
 
-    def __init__(self):
         self.board = Board(BOARD_WIDTH, BOARD_HEIGHT)
 
-        self.current: Tetromino = random_piece()
-        self.next_piece: Tetromino = random_piece()
+        # peças inicial e próxima usando o RNG interno
+        self.current: Tetromino = random_piece(self._rng)
+        self.next_piece: Tetromino = random_piece(self._rng)
         self.current.spawn(BOARD_WIDTH // 2 - 2, 0)
 
         self.score = 0
@@ -50,12 +55,12 @@ class TetrisGame:
             self.lines += cleared
             # Pontuação estilo clássico (multiplicado pelo nível)
             self.score += {1: 40, 2: 100, 3: 300, 4: 1200}.get(cleared, 0) * self.level
-            self.level = 1 + self.lines // 10  # sobe a cada 10
+            self.level = 1 + self.lines // 10  # sobe a cada 10 linhas
         self._spawn_next()
 
     def _spawn_next(self) -> None:
         self.current = self.next_piece
-        self.next_piece = random_piece()
+        self.next_piece = random_piece(self._rng)
         self.current.spawn(BOARD_WIDTH // 2 - 2, 0)
 
         # Se não couber, é game over (modo clássico)
@@ -108,5 +113,5 @@ class TetrisGame:
         return not self.paused and not self.game_over
 
     # ----- Reinício (modo clássico) -----
-    def reset(self) -> None:
-        self.__init__()
+    def reset(self, rng_seed: int | None = None) -> None:
+        self.__init__(rng_seed)
