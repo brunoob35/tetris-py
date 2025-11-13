@@ -732,7 +732,7 @@ class ReplayView(arcade.View):
 
         arcade.set_background_color(RETRO_BG)
 
-        # pega a seed do jogo no banco e recria o game com a mesma sequência de peças
+        # pega a seed do jogo no banco e recria o game garantindo a mesma sequência de peças
         rng_seed = repository.get_game_rng_seed(game_id)
         self.game = TetrisGame(rng_seed=rng_seed)
 
@@ -741,9 +741,14 @@ class ReplayView(arcade.View):
         self.event_index = 0
         self._start_time = time.time()
 
+        # coordenadas da sidebar
+        self.sidebar_left = BOARD_WIDTH * CELL_SIZE
+        self.sidebar_center_x = self.sidebar_left + SIDEBAR_WIDTH / 2
+
+        # texto de info alinhado no centro da porção direita (sidebar)
         self.info_text = arcade.Text(
             f"Replay jogo #{game_id}  |  ESC/M: voltar",
-            WINDOW_WIDTH / 2,
+            self.sidebar_center_x,
             WINDOW_HEIGHT - 40,
             RETRO_ACCENT,
             11,
@@ -753,7 +758,7 @@ class ReplayView(arcade.View):
         )
 
         # HUD lateral
-        left = BOARD_WIDTH * CELL_SIZE + 10
+        left = self.sidebar_left + 10
         top = WINDOW_HEIGHT - 70
         self.txt_score = arcade.Text(
             "",
@@ -846,7 +851,7 @@ class ReplayView(arcade.View):
                     draw_block_8bit(cx - CELL_SIZE / 2, cy - CELL_SIZE / 2, CELL_SIZE, color)
 
     def _draw_sidebar(self):
-        left = BOARD_WIDTH * CELL_SIZE
+        left = self.sidebar_left
         arcade.draw_lbwh_rectangle_filled(left, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT, RETRO_PANEL)
         arcade.draw_lbwh_rectangle_outline(
             left, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT, RETRO_ACCENT, 2
@@ -893,7 +898,6 @@ class ReplayView(arcade.View):
         if key in (arcade.key.ESCAPE, arcade.key.M):
             self.window.show_view(MainMenuView(self.user_id))
 
-
 # ============================================================
 #                        TELA DO TABULEIRO
 # ============================================================
@@ -914,7 +918,7 @@ class PlayfieldView(arcade.View):
         if loaded_state is not None:
             self.game = state_codec.state_to_game(loaded_state)
         else:
-            self.game = TetrisGame()
+            self.game = TetrisGame(rng_seed=self.rng_seed)
 
         self.game_id = repository.start_game(self.user_id, self.rng_seed)
         self._start_time = time.time()
