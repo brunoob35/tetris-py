@@ -7,7 +7,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from .db import get_conn
 
 # ---------- helpers de senha ----------
-
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -18,7 +17,6 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 # ---------- Usuários básicos ----------
-
 def create_user(username: str, password_hash: str, email: str | None = None) -> int | None:
     sql = text("""
         INSERT INTO users (username, email, password_hash)
@@ -54,7 +52,6 @@ def get_user_by_id(user_id: int):
         return None
 
 # ---------- APIs de auth de mais alto nível ----------
-
 def create_user_account(username: str, plain_password: str, email: str | None = None):
     """
     Cria usuário novo.
@@ -85,7 +82,6 @@ def authenticate_user(username: str, plain_password: str):
     return user
 
 # ---------- Partidas / games ----------
-
 def start_game(user_id: int, rng_seed: int) -> int | None:
     """
     Cria um registro de jogo em andamento, salvando também a rng_seed
