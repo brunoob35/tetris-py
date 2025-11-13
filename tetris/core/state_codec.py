@@ -1,7 +1,7 @@
 # tetris/state_codec.py
-from .game import TetrisGame
-from .board import Board
-from .tetromino import Tetromino
+from tetris.models.game import TetrisGame
+from tetris.models.board import Board
+from tetris.models.tetromino import Tetromino
 
 def game_to_state(game: TetrisGame) -> dict:
     def piece_to_dict(p: Tetromino | None):

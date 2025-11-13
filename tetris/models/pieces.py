@@ -1,4 +1,4 @@
-from .tetromino import Tetromino
+from tetris.models.tetromino import Tetromino
 
 CYAN    = ( 86, 180, 233)
 YELLOW  = (240, 228,  66)

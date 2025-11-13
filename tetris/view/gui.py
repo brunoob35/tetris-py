@@ -5,9 +5,10 @@ import arcade
 from arcade.gui import UIManager, UIFlatButton, UIInputText
 from arcade.gui.events import UITextInputEvent
 
-from .game import TetrisGame
-from .constants import *
-from . import repository, state_codec
+from tetris.models.game import TetrisGame
+from tetris.core.constants import *
+from db import repository
+from tetris.core import state_codec
 
 
 # ---------- helpers da estilização 8-bit ----------

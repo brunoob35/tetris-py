@@ -1,6 +1,6 @@
 import arcade
-from tetris.gui import LoginView
-from tetris.constants import WINDOW_WIDTH, WINDOW_HEIGHT
+from tetris.view.gui import LoginView
+from tetris.core.constants import WINDOW_WIDTH, WINDOW_HEIGHT
 
 def main():
     window = arcade.Window(WINDOW_WIDTH, WINDOW_HEIGHT, "Tetris retrô")

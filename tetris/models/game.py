@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import random
-from .board import Board
-from .tetromino import Tetromino
-from .factory import random_piece
-from .constants import BOARD_WIDTH, BOARD_HEIGHT, BASE_FALL_INTERVAL, MAX_LEVEL_SPEED_MULTIPLIER
+from tetris.models.board import Board
+from tetris.models.tetromino import Tetromino
+from tetris.core.factory import random_piece
+from tetris.core.constants import BOARD_WIDTH, BOARD_HEIGHT, BASE_FALL_INTERVAL, MAX_LEVEL_SPEED_MULTIPLIER
 
 class TetrisGame:
     def __init__(self, rng_seed: int | None = None):

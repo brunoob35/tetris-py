@@ -1,7 +1,7 @@
 # factory.py
 import random
-from .pieces import I_piece, O_piece, T_piece, S_piece, Z_piece, J_piece, L_piece
-from .tetromino import Tetromino
+from tetris.models.pieces import I_piece, O_piece, T_piece, S_piece, Z_piece, J_piece, L_piece
+from tetris.models.tetromino import Tetromino
 
 PIECE_FACTORIES = [I_piece, O_piece, T_piece, S_piece, Z_piece, J_piece, L_piece]
 
