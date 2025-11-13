@@ -1,7 +1,7 @@
-# 🎮 Arcade Tetris – Projeto Final  
+# 🎮 Arcade Tetris – Projeto Final
+Este projeto é uma implementação de Tetris usando **Python + Arcade**, do aluno Bruno Schmaiske Quoos, na matéria de POO do curso ADS na unicesumar.
 
-Este projeto é uma implementação de Tetris usando **Python + Arcade**, com:
-
+No projeto temos:
 - **Persistência de jogos**
 - **Replays**
 - **Continuidade de partidas**
