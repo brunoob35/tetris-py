@@ -1,11 +1,23 @@
 # tetris/repository.py
 import json
 import datetime as dt
+import bcrypt
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from .db import get_conn
 
-# ---------- Usuários ----------
+# ---------- helpers de senha ----------
+
+def hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+# ---------- Usuários básicos ----------
 
 def create_user(username: str, password_hash: str, email: str | None = None) -> int | None:
     sql = text("""
@@ -22,7 +34,7 @@ def create_user(username: str, password_hash: str, email: str | None = None) -> 
         return None
 
 def get_user_by_username(username: str):
-    sql = text("SELECT id, username, password_hash FROM users WHERE username = :u")
+    sql = text("SELECT id, username, email, password_hash FROM users WHERE username = :u")
     try:
         with get_conn() as conn:
             row = conn.execute(sql, {"u": username}).mappings().first()
@@ -30,6 +42,47 @@ def get_user_by_username(username: str):
     except Exception as e:
         print("[DB] get_user_by_username falhou:", e)
         return None
+
+def get_user_by_id(user_id: int):
+    sql = text("SELECT id, username, email, password_hash FROM users WHERE id = :id")
+    try:
+        with get_conn() as conn:
+            row = conn.execute(sql, {"id": user_id}).mappings().first()
+            return dict(row) if row else None
+    except Exception as e:
+        print("[DB] get_user_by_id falhou:", e)
+        return None
+
+# ---------- APIs de auth de mais alto nível ----------
+
+def create_user_account(username: str, plain_password: str, email: str | None = None):
+    """
+    Cria usuário novo.
+    Retorna (user_id, error_message). Se deu certo, error_message = None.
+    """
+    existing = get_user_by_username(username)
+    if existing:
+        return None, "Nome de usuário já existe."
+
+    if not username or not plain_password:
+        return None, "Usuário e senha são obrigatórios."
+
+    pw_hash = hash_password(plain_password)
+    user_id = create_user(username, pw_hash, email)
+    if user_id is None:
+        return None, "Erro ao criar usuário no banco."
+    return user_id, None
+
+def authenticate_user(username: str, plain_password: str):
+    """
+    Retorna dict do user se login ok, senão None.
+    """
+    user = get_user_by_username(username)
+    if not user:
+        return None
+    if not verify_password(plain_password, user["password_hash"]):
+        return None
+    return user
 
 # ---------- Partidas / games ----------
 
@@ -48,11 +101,11 @@ def start_game(user_id: int, rng_seed: int | None) -> int | None:
         print("[DB] start_game falhou:", e)
         return None
 
-def finish_game(game_id: int, final_score: int, lines: int,
+def finish_game(game_id: int | None, user_id: int | None, final_score: int, lines: int,
                 level: int, duration_ms: int, status: str = "completed") -> None:
-    if game_id is None:
-        # DB off / partida não registrada
+    if game_id is None or user_id is None:
         return
+
     sql = text("""
         UPDATE games
         SET finished_at = :fin,
@@ -71,14 +124,45 @@ def finish_game(game_id: int, final_score: int, lines: int,
                 "lvl": level, "dur": duration_ms, "st": status, "gid": game_id
             })
             conn.commit()
+        # depois de atualizar o game, atualiza high score
+        update_high_score(user_id, final_score)
     except Exception as e:
         print("[DB] finish_game falhou:", e)
+
+# ---------- High score ----------
+
+def update_high_score(user_id: int, score: int) -> None:
+    sql_select = text("""
+        SELECT best_score FROM user_high_scores WHERE user_id = :uid
+    """)
+    sql_insert = text("""
+        INSERT INTO user_high_scores (user_id, best_score, best_score_at)
+        VALUES (:uid, :score, :at)
+    """)
+    sql_update = text("""
+        UPDATE user_high_scores
+        SET best_score = :score, best_score_at = :at
+        WHERE user_id = :uid
+    """)
+
+    now = dt.datetime.utcnow()
+    try:
+        with get_conn() as conn:
+            row = conn.execute(sql_select, {"uid": user_id}).first()
+            if not row:
+                conn.execute(sql_insert, {"uid": user_id, "score": score, "at": now})
+            else:
+                current = row[0]
+                if score > current:
+                    conn.execute(sql_update, {"uid": user_id, "score": score, "at": now})
+            conn.commit()
+    except Exception as e:
+        print("[DB] update_high_score falhou:", e)
 
 # ---------- Saves ----------
 
 def upsert_saved_game(user_id: int, game_id: int | None, state: dict) -> None:
     payload = json.dumps(state)
-    # se sua coluna for JSON mesmo:
     sql = text("""
         INSERT INTO saved_games (user_id, game_id, state_json, is_active)
         VALUES (:uid, :gid, CAST(:js AS JSON), 1)
@@ -108,7 +192,6 @@ def load_active_save(user_id: int) -> dict | None:
             row = conn.execute(sql, {"uid": user_id}).first()
             if not row:
                 return None
-            # se a coluna for JSON, row[0] já vem como dict; se for TEXT, faz loads
             val = row[0]
             if isinstance(val, str):
                 return json.loads(val)
@@ -163,4 +246,37 @@ def get_global_leaderboard(limit: int = 10):
             return [dict(r) for r in rows]
     except Exception as e:
         print("[DB] get_global_leaderboard falhou:", e)
+        return []
+
+
+# ---------- Melhor score de um usuário ----------
+
+def get_user_best_score(user_id: int) -> int | None:
+    sql = text("SELECT best_score FROM user_high_scores WHERE user_id = :uid")
+    try:
+        with get_conn() as conn:
+            row = conn.execute(sql, {"uid": user_id}).first()
+            if not row:
+                return None
+            return row[0]
+    except Exception as e:
+        print("[DB] get_user_best_score falhou:", e)
+        return None
+
+# ---------- Partidas recentes de um usuário (pra replay) ----------
+
+def get_user_recent_games(user_id: int, limit: int = 10):
+    sql = text("""
+        SELECT id, final_score, lines_cleared, level_reached, finished_at
+        FROM games
+        WHERE user_id = :uid AND status = 'completed'
+        ORDER BY finished_at DESC
+        LIMIT :lim
+    """)
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(sql, {"uid": user_id, "lim": limit}).mappings().all()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        print("[DB] get_user_recent_games falhou:", e)
         return []
