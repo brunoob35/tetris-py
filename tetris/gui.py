@@ -3,6 +3,8 @@ import arcade
 from arcade.gui import UIManager, UIFlatButton
 from .game import TetrisGame
 from .constants import *
+import time
+from . import repository, state_codec
 
 # ---------- helpers da estilização 8-bit ----------
 def _clamp(x: int) -> int: return max(0, min(255, x))
@@ -38,9 +40,10 @@ class MainMenuView(arcade.View):
     Menu inicial. Não instancia o jogo até o usuário escolher "Tetris clássico".
     O botão "Tetris Avançado (em breve)" é visível, mas não faz nada ao clicar.
     """
-    def __init__(self):
+    def __init__(self, user_id: int = 1):
         super().__init__()
         self.ui = UIManager()
+        self.user_id = user_id  # por enquanto usuário fixo
 
         # Textos
         self.title: arcade.Text | None = None
@@ -117,7 +120,12 @@ class MainMenuView(arcade.View):
         # Handler apenas para o clássico
         @self.btn_classic.event("on_click")
         def _start_classic(_):
-            self.window.show_view(PlayfieldView())
+            # tenta carregar jogo salvo; se existir, continua
+            saved_state = repository.load_active_save(self.user_id)
+            if saved_state:
+                self.window.show_view(PlayfieldView(user_id=self.user_id, loaded_state=saved_state))
+            else:
+                self.window.show_view(PlayfieldView(user_id=self.user_id))
 
         # Intencionalmente NÃO registramos clique no "Avançado" (fica inativo)
 
@@ -164,10 +172,22 @@ class PlayfieldView(arcade.View):
     """
     Renderiza o tabuleiro e o painel, e conversa com a lógica do TetrisGame (clássico).
     """
-    def __init__(self):
+    def __init__(self, user_id: int = 1, loaded_state: dict | None = None):
         super().__init__()
         arcade.set_background_color(arcade.color.BLACK)
-        self.game = TetrisGame()
+
+        self.user_id = user_id
+
+        # seed pra, no futuro, ter replay determinístico (se você ajustar o RNG do TetrisGame)
+        self.rng_seed = int(time.time_ns())
+
+        # estado do jogo (novo ou carregado)
+        if loaded_state is not None:
+            self.game = state_codec.state_to_game(loaded_state)
+            self.game_id = repository.start_game(self.user_id, self.rng_seed)
+        else:
+            self.game = TetrisGame()
+            self.game_id = repository.start_game(self.user_id, self.rng_seed)
 
         # HUD
         left = BOARD_WIDTH * CELL_SIZE + 10
@@ -184,7 +204,7 @@ class PlayfieldView(arcade.View):
             arcade.Text("↑ rotacionar", left, base_y + 24, arcade.color.LIGHT_GRAY, 12, anchor_y="baseline"),
             arcade.Text("↓ cair suave", left, base_y + 8,  arcade.color.LIGHT_GRAY, 12, anchor_y="baseline"),
             arcade.Text("Espaço: queda rápida", left, base_y - 8, arcade.color.LIGHT_GRAY, 12, anchor_y="baseline"),
-            arcade.Text("P: Pausa  |  R: Menu (se Game Over)  |  M: Menu", left, base_y - 24,
+            arcade.Text("P: Pausa  |  R: Menu (se Game Over)  |  M: Menu (salva)", left, base_y - 24,
                         arcade.color.LIGHT_GRAY, 12, anchor_y="baseline"),
         ]
         self.txt_paused = arcade.Text("PAUSADO", WINDOW_WIDTH/2, WINDOW_HEIGHT/2 + 30,
@@ -192,6 +212,11 @@ class PlayfieldView(arcade.View):
         self.txt_game_over = arcade.Text("GAME OVER — pressione R para voltar ao menu",
                                          WINDOW_WIDTH/2, WINDOW_HEIGHT/2,
                                          arcade.color.WHITE, 18, anchor_x="center", anchor_y="center")
+
+        # tracking de tempo e replay
+        self._start_time = time.time()
+        self._finished_persisted = False
+        self._replay_events: list[dict] = []
 
     def on_show_view(self):
         self.window.set_size(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -269,16 +294,42 @@ class PlayfieldView(arcade.View):
     def on_update(self, delta_time: float):
         self.game.tick(delta_time)
 
+        if self.game.game_over and not self._finished_persisted:
+            self._finished_persisted = True
+            now = time.time()
+            duration_ms = int((now - self._start_time) * 1000)
+
+            # só tenta registrar no DB se tiver game_id válido
+            if self.game_id is not None:
+                repository.finish_game(
+                    self.game_id,
+                    final_score=self.game.score,
+                    lines=self.game.lines,
+                    level=self.game.level,
+                    duration_ms=duration_ms,
+                    status="completed",
+                )
+                repository.save_replay(self.game_id, self._replay_events)
+
     # --------- input ---------
     def on_key_press(self, key, modifiers):
+        # registra input pro replay
+        t = time.time() - self._start_time
+        self._replay_events.append({"t": t, "key": int(key), "mods": int(modifiers)})
+
         if key == arcade.key.M:
-            self.window.show_view(MainMenuView()); return
+            state = state_codec.game_to_state(self.game)
+            # se game_id for None, ainda assim salva (função trata)
+            repository.upsert_saved_game(self.user_id, self.game_id, state)
+            self.window.show_view(MainMenuView(user_id=self.user_id))
+            return
+
         if key == arcade.key.P:
             self.game.toggle_pause(); return
 
         if self.game.game_over:
             if key == arcade.key.R:
-                self.window.show_view(MainMenuView())
+                self.window.show_view(MainMenuView(user_id=self.user_id))
             return
 
         if self.game.paused:
