@@ -138,6 +138,8 @@ def finish_game(game_id: int | None, user_id: int | None, final_score: int, line
             conn.commit()
         # depois de atualizar o game, atualiza high score
         update_high_score(user_id, final_score)
+        # limpa save ativo dessa partida/usuário, se tiver
+        clear_active_save(user_id)
     except Exception as e:
         print("[DB] finish_game falhou:", e)
 
@@ -172,7 +174,6 @@ def update_high_score(user_id: int, score: int) -> None:
         print("[DB] update_high_score falhou:", e)
 
 # ---------- Saves ----------
-
 def upsert_saved_game(user_id: int, game_id: int | None, state: dict) -> None:
     payload = json.dumps(state)
     sql = text("""
@@ -212,8 +213,20 @@ def load_active_save(user_id: int) -> dict | None:
         print("[DB] load_active_save falhou:", e)
         return None
 
-# ---------- Replay ----------
+def clear_active_save(user_id: int) -> None:
+    sql = text("""
+        UPDATE saved_games
+        SET is_active = 0
+        WHERE user_id = :uid AND is_active = 1
+    """)
+    try:
+        with get_conn() as conn:
+            conn.execute(sql, {"uid": user_id})
+            conn.commit()
+    except Exception as e:
+        print("[DB] clear_active_save falhou:", e)
 
+# ---------- Replay ----------
 def save_replay(game_id: int | None, replay_events: list[dict]) -> None:
     if game_id is None:
         return

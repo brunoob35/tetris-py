@@ -554,14 +554,22 @@ class MainMenuView(arcade.View):
         self.ui.add(self.btn_new_game)
         self.ui.add(self.btn_replay)
 
-        @self.btn_new_game.event("on_click")
-        def _start_classic(_):
-            saved_state = repository.load_active_save(self.user_id)
-            if saved_state:
+        # vê se existe jogo salvo ativo
+        saved_state = repository.load_active_save(self.user_id)
+        if saved_state:
+            # mostra pro usuário que é continuação
+            self.btn_new_game.text = "CONTINUAR PARTIDA"
+
+            @self.btn_new_game.event("on_click")
+            def _start_classic(_):
                 self.window.show_view(
                     PlayfieldView(user_id=self.user_id, loaded_state=saved_state)
                 )
-            else:
+        else:
+            self.btn_new_game.text = "NOVO JOGO"
+
+            @self.btn_new_game.event("on_click")
+            def _start_classic(_):
                 self.window.show_view(PlayfieldView(user_id=self.user_id))
 
         @self.btn_replay.event("on_click")
@@ -960,6 +968,16 @@ class PlayfieldView(arcade.View):
             anchor_y="center",
             font_name=RETRO_FONT,
         )
+        self.txt_paused_hint = arcade.Text(
+            "P: Continuar  |  ESC/M: Volta ao Menu (salva jogo)",
+            WINDOW_WIDTH / 2,
+            WINDOW_HEIGHT / 2 - 5,
+            RETRO_TEXT,
+            13,
+            anchor_x="center",
+            anchor_y="center",
+            font_name=RETRO_FONT,
+        )
         self.txt_game_over = arcade.Text(
             "GAME OVER — pressione R para voltar ao menu",
             WINDOW_WIDTH / 2,
@@ -984,6 +1002,7 @@ class PlayfieldView(arcade.View):
                 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, (0, 0, 0, 160)
             )
             self.txt_paused.draw()
+            self.txt_paused_hint.draw()
 
         if self.game.game_over:
             arcade.draw_lbwh_rectangle_filled(
@@ -1083,7 +1102,10 @@ class PlayfieldView(arcade.View):
             repository.save_replay(self.game_id, self._replay_events)
 
     def on_key_press(self, key, modifiers):
-        if key == arcade.key.M:
+        # salvar e voltar pro menu (M ou ESC)
+        if key in (arcade.key.M, arcade.key.ESCAPE):
+            # garante que o jogo não volte “pausado” quando continuar
+            self.game.paused = False
             state = state_codec.game_to_state(self.game)
             repository.upsert_saved_game(self.user_id, self.game_id, state)
             self.window.show_view(MainMenuView(user_id=self.user_id))
